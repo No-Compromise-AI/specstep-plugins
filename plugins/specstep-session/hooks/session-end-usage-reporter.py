@@ -71,7 +71,7 @@ import sys
 import urllib.error
 import urllib.request
 
-REPORTER_VERSION = "1.1.0"
+REPORTER_VERSION = "1.2.0"
 DEFAULT_API_BASE = "https://specstep.com"
 STATE_PREFIX = "active-build-session-"
 
@@ -123,6 +123,18 @@ def _fold_file(path: str, tot: dict, seen: set, *, is_subagent: bool) -> None:
                 model = msg.get("model")
                 if model:
                     tot["_models"].add(model)
+                    # Per-model split — same token classes, keyed by model id, so
+                    # cost can be priced at each model's own list rate.
+                    pm = tot["_per_model"].setdefault(model, {
+                        "input_tokens": 0, "cache_write_5m_tokens": 0,
+                        "cache_write_1h_tokens": 0, "cache_read_tokens": 0,
+                        "output_tokens": 0, "turns": 0})
+                    pm["turns"] += 1
+                    pm["input_tokens"] += int(u.get("input_tokens", 0) or 0)
+                    pm["output_tokens"] += int(u.get("output_tokens", 0) or 0)
+                    pm["cache_read_tokens"] += int(u.get("cache_read_input_tokens", 0) or 0)
+                    pm["cache_write_5m_tokens"] += int(cc.get("ephemeral_5m_input_tokens", 0) or 0)
+                    pm["cache_write_1h_tokens"] += int(cc.get("ephemeral_1h_input_tokens", 0) or 0)
                 ts = o.get("timestamp")
                 if ts:
                     if tot["window_start"] is None or ts < tot["window_start"]:
@@ -152,7 +164,7 @@ def aggregate(transcript_path: str) -> dict:
         "turns": 0, "sidechain_turns": 0,
         "input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0,
         "cache_write_5m_tokens": 0, "cache_write_1h_tokens": 0,
-        "window_start": None, "window_end": None, "_models": set(),
+        "window_start": None, "window_end": None, "_models": set(), "_per_model": {},
     }
     seen: set = set()
     _fold_file(transcript_path, tot, seen, is_subagent=False)
@@ -167,6 +179,10 @@ def build_payload(transcript_path: str, claude_session_id: str) -> dict:
         "claude_session_id": claude_session_id,
         "agent": "claude-code",
         "models": sorted(tot.pop("_models")),
+        "per_model": [
+            {"model": m, **counts}
+            for m, counts in sorted(tot.pop("_per_model").items())
+        ],
         "input_tokens": tot["input_tokens"],
         "cache_write_5m_tokens": tot["cache_write_5m_tokens"],
         "cache_write_1h_tokens": tot["cache_write_1h_tokens"],
@@ -381,6 +397,16 @@ def _selftest() -> int:
         check("input (1+1+1)", p["input_tokens"], 3)
         check("models include both tiers", p["models"], ["claude-haiku-4-5-20251001", "claude-opus-4-8"])
         check("claude_session_id", p["claude_session_id"], sid)
+
+        # per_model splits: present for both tiers, and reconcile to the aggregate.
+        pm = {e["model"]: e for e in p["per_model"]}
+        check("per_model has both models", sorted(pm), ["claude-haiku-4-5-20251001", "claude-opus-4-8"])
+        check("per_model opus cache_read (100+200)", pm["claude-opus-4-8"]["cache_read_tokens"], 300)
+        check("per_model haiku cache_read (5000)", pm["claude-haiku-4-5-20251001"]["cache_read_tokens"], 5000)
+        for cls in ("input_tokens", "cache_write_5m_tokens", "cache_write_1h_tokens",
+                    "cache_read_tokens", "output_tokens", "turns"):
+            check(f"per_model sums to aggregate {cls}",
+                  sum(e[cls] for e in p["per_model"]), p[cls])
 
         # --backfill argument parsing (pure; no I/O, no network)
         bf_argv = ["prog", "--backfill", main_path, "--build-session", "019e-bs", "--dry-run"]
