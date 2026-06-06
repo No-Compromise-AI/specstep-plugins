@@ -68,6 +68,26 @@ python3 plugins/specstep-session/hooks/session-end-usage-reporter.py --selftest
 
 ---
 
+## Backfill a past session
+
+Already have build sessions whose AI-coder runs finished before the reporter was wired? Record their usage after the fact — `--backfill` parses a past transcript and posts it to a specific build session in one step:
+
+```bash
+# preview only (no send)
+python3 plugins/specstep-session/hooks/session-end-usage-reporter.py \
+  --backfill ~/.claude/projects/<encoded-cwd>/<session-id>.jsonl \
+  --build-session <build-session-id> --dry-run
+
+# record it (needs SPECSTEP_API_KEY with the session_state.write scope)
+python3 plugins/specstep-session/hooks/session-end-usage-reporter.py \
+  --backfill ~/.claude/projects/<encoded-cwd>/<session-id>.jsonl \
+  --build-session <build-session-id>
+```
+
+The `claude_session_id` is taken from the transcript filename — the same key the live `SessionEnd` hook uses — so a backfill writes the **same row** a live report would, and a later live run overwrites it rather than double-counting. Run it once per transcript to attribute several past AI-coder sessions to one build session. The usage endpoint accepts writes to **closed** build sessions, and everything stays confined to your own projects. (Backfill needs the transcript still on disk — the token counts are read from it.)
+
+---
+
 ## The protocol in one screen
 
 **At the start of any session that will ship material work:** run `/start-session`. It:

@@ -40,11 +40,26 @@ ENV
 MODES
     (stdin = hook JSON)     normal operation
     --dry-run [transcript]  print the payload that WOULD be sent (manual check)
+    --backfill <transcript> --build-session <id>
+                            record a PAST session's usage to a specific build
+                            session in one step — parse + POST. The claude
+                            session id is taken from the transcript filename, so
+                            the write lands on the same (build_session,
+                            claude_session) row the live hook would use:
+                            idempotent — a re-run, or a later real SessionEnd
+                            for that session, overwrites rather than doubles.
+                            Add --dry-run to preview without sending. Needs
+                            SPECSTEP_API_KEY (session_state.write scope).
     --selftest              build a synthetic transcript tree + assert the math
 
 A hook must NEVER block session end: every failure path logs to stderr and
 exits 0.
 """
+# Defer annotation evaluation so the PEP 604 `X | None` return hints below run
+# on Python 3.9 (macOS ships 3.9 as /usr/bin/python3). Without this the module
+# raises at import — before the fail-open guard in main() can catch it.
+from __future__ import annotations
+
 import glob
 import json
 import os
@@ -53,7 +68,7 @@ import sys
 import urllib.error
 import urllib.request
 
-REPORTER_VERSION = "1.0.0"
+REPORTER_VERSION = "1.1.0"
 DEFAULT_API_BASE = "https://specstep.com"
 STATE_PREFIX = "active-build-session-"
 
@@ -243,11 +258,64 @@ def run(hook: dict) -> None:
     post_usage(build_session_id, payload)
 
 
+# ── backfill (manual: record a past / closed session) ─────────────────────
+def _arg_after(argv: list, flag: str) -> str | None:
+    """The token following `flag` in argv, or None."""
+    if flag in argv:
+        i = argv.index(flag)
+        if i + 1 < len(argv):
+            return argv[i + 1]
+    return None
+
+
+def run_backfill(argv: list) -> int:
+    """`--backfill <transcript> --build-session <id> [--dry-run]` — parse a
+    PAST session's transcript and POST its usage to a specific build session.
+
+    The claude_session id is derived from the transcript filename (the same id
+    the live SessionEnd hook uses), so the write lands on the SAME
+    (build_session, claude_session) row — idempotent: a re-run, or a later real
+    SessionEnd for that session, overwrites rather than double-counts. Unlike
+    the hook path this returns a non-zero exit on bad input — it's a deliberate
+    operator command, not the never-block-session-end hook."""
+    transcript = _arg_after(argv, "--backfill")
+    build_session_id = _arg_after(argv, "--build-session")
+    dry = ("--dry-run" in argv) or bool(os.environ.get("SPECSTEP_USAGE_DRY_RUN"))
+
+    if not transcript:
+        _log("usage: --backfill <transcript.jsonl> --build-session <id> [--dry-run]")
+        return 2
+    if not os.path.exists(transcript):
+        _log(f"transcript not found: {transcript}")
+        return 2
+    if not build_session_id:
+        _log("--backfill requires --build-session <build-session-id>")
+        return 2
+
+    claude_session_id = os.path.splitext(os.path.basename(transcript))[0]
+    payload = build_payload(transcript, claude_session_id)
+
+    if dry:
+        print(json.dumps({"build_session_id": build_session_id, "url_base":
+                          (os.environ.get("SPECSTEP_API_BASE") or DEFAULT_API_BASE),
+                          "payload": payload}, indent=2))
+        return 0
+    if not os.environ.get("SPECSTEP_API_KEY"):
+        _log("SPECSTEP_API_KEY not set — cannot backfill (needs session_state.write). "
+             "Set it and retry, or add --dry-run to preview the payload.")
+        return 2
+
+    post_usage(build_session_id, payload)
+    return 0
+
+
 # ── entrypoints ────────────────────────────────────────────────────────────
 def main(argv: list) -> int:
     try:
         if "--selftest" in argv:
             return _selftest()
+        if "--backfill" in argv:
+            return run_backfill(argv)
         if "--dry-run" in argv:
             os.environ["SPECSTEP_USAGE_DRY_RUN"] = "1"
             argv = [a for a in argv if a != "--dry-run"]
@@ -310,6 +378,17 @@ def _selftest() -> int:
         check("input (1+1+1)", p["input_tokens"], 3)
         check("models include both tiers", p["models"], ["claude-haiku-4-5-20251001", "claude-opus-4-8"])
         check("claude_session_id", p["claude_session_id"], sid)
+
+        # --backfill argument parsing (pure; no I/O, no network)
+        bf_argv = ["prog", "--backfill", main_path, "--build-session", "019e-bs", "--dry-run"]
+        check("backfill transcript arg", _arg_after(bf_argv, "--backfill"), main_path)
+        check("backfill build-session arg", _arg_after(bf_argv, "--build-session"), "019e-bs")
+        check("backfill missing --build-session → None",
+              _arg_after(["prog", "--backfill", main_path], "--build-session"), None)
+        # backfill derives the SAME claude_session_id the live hook would (from
+        # the transcript filename) → idempotent overwrite, never a second row.
+        bf_sid = os.path.splitext(os.path.basename(main_path))[0]
+        check("backfill claude_session_id == live hook's", bf_sid, sid)
 
     if failures:
         for f in failures:
