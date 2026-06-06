@@ -1,0 +1,30 @@
+{
+  "name": "specstep",
+  "owner": {
+    "name": "SpecStep",
+    "url": "https://specstep.com"
+  },
+  "metadata": {
+    "description": "SpecStep's Claude Code plugins.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "specstep-session",
+      "source": "./plugins/specstep-session",
+      "description": "Session-start / session-end protocol skills for driving SpecStep's session-state MCP tools with discipline, plus an automatic per-session token-usage reporter.",
+      "version": "0.1.0",
+      "author": {
+        "name": "SpecStep",
+        "url": "https://specstep.com"
+      },
+      "keywords": [
+        "specstep",
+        "session-state",
+        "build-sessions",
+        "decision-log",
+        "token-usage"
+      ]
+    }
+  ]
+}

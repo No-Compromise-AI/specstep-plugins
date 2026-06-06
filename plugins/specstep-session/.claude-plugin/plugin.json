@@ -1,0 +1,20 @@
+{
+  "name": "specstep-session",
+  "version": "0.1.0",
+  "description": "Session-start / session-end protocol skills for driving SpecStep's session-state MCP tools (build sessions, decision log, backlog, projects, cross-aggregate) with discipline, plus an automatic per-session token-usage reporter that feeds each project's 'cost to build' rollup.",
+  "author": {
+    "name": "SpecStep",
+    "url": "https://specstep.com"
+  },
+  "homepage": "https://specstep.com",
+  "repository": "https://github.com/No-Compromise-AI/specstep-plugins",
+  "keywords": [
+    "specstep",
+    "session-state",
+    "build-sessions",
+    "decision-log",
+    "backlog",
+    "token-usage",
+    "mcp"
+  ]
+}
