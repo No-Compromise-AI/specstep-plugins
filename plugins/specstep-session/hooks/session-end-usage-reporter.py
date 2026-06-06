@@ -13,11 +13,14 @@ WIRING
     As a Claude Code plugin, this is wired by the plugin's `hooks/hooks.json`
     (the `SessionEnd` entry, via `${CLAUDE_PLUGIN_ROOT}`) — nothing to do.
 
-    For a manual (non-plugin) install, add to `.claude/settings.json`:
+    For a manual (non-plugin) install, copy BOTH this file and run-reporter.js
+    into .claude/hooks/, then add to `.claude/settings.json` (the `node`
+    launcher resolves Python cross-platform — py/python on Windows, python3 on
+    macOS/Linux):
     "hooks": {
       "SessionEnd": [
-        { "hooks": [ { "type": "command",
-                       "command": "python3 .claude/hooks/session-end-usage-reporter.py" } ] }
+        { "hooks": [ { "type": "command", "command": "node",
+                       "args": [".claude/hooks/run-reporter.js"] } ] }
       ]
     }
 

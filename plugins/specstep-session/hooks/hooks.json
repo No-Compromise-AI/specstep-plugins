@@ -5,7 +5,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/session-end-usage-reporter.py"
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/run-reporter.js"]
           }
         ]
       }

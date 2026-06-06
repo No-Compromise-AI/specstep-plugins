@@ -44,8 +44,11 @@ Copy the pieces into your project's `.claude/`:
 ```bash
 cp -r plugins/specstep-session/skills/start-session .claude/skills/
 cp -r plugins/specstep-session/skills/end-session   .claude/skills/
+cp plugins/specstep-session/hooks/run-reporter.js               .claude/hooks/
 cp plugins/specstep-session/hooks/session-end-usage-reporter.py .claude/hooks/
 ```
+
+`run-reporter.js` is a tiny Node launcher that resolves your platform's Python (`py`/`python` on Windows, `python3` on macOS/Linux) and runs the reporter; copy both files.
 
 Then merge the `hooks` block from [`settings.example.json`](settings.example.json) into your `.claude/settings.json`.
 
@@ -60,10 +63,10 @@ export SPECSTEP_API_KEY="sk_..."        # needs the session_state.write scope
 # export SPECSTEP_API_BASE="https://specstep.com"   # only if self-hosting / non-default
 ```
 
-Verify the reporter is healthy without sending anything:
+Verify the reporter is healthy without sending anything (the `node` launcher picks your platform's Python; or call the `.py` directly with `py` on Windows / `python3` on macOS/Linux):
 
 ```bash
-python3 plugins/specstep-session/hooks/session-end-usage-reporter.py --selftest
+node plugins/specstep-session/hooks/run-reporter.js --selftest
 ```
 
 ---
@@ -74,15 +77,17 @@ Already have build sessions whose AI-coder runs finished before the reporter was
 
 ```bash
 # preview only (no send)
-python3 plugins/specstep-session/hooks/session-end-usage-reporter.py \
+node plugins/specstep-session/hooks/run-reporter.js \
   --backfill ~/.claude/projects/<encoded-cwd>/<session-id>.jsonl \
   --build-session <build-session-id> --dry-run
 
 # record it (needs SPECSTEP_API_KEY with the session_state.write scope)
-python3 plugins/specstep-session/hooks/session-end-usage-reporter.py \
+node plugins/specstep-session/hooks/run-reporter.js \
   --backfill ~/.claude/projects/<encoded-cwd>/<session-id>.jsonl \
   --build-session <build-session-id>
 ```
+
+(`run-reporter.js` is the cross-platform launcher; you can also call `session-end-usage-reporter.py` directly with `py` on Windows or `python3` on macOS/Linux.)
 
 The `claude_session_id` is taken from the transcript filename — the same key the live `SessionEnd` hook uses — so a backfill writes the **same row** a live report would, and a later live run overwrites it rather than double-counting. Run it once per transcript to attribute several past AI-coder sessions to one build session. The usage endpoint accepts writes to **closed** build sessions, and everything stays confined to your own projects. (Backfill needs the transcript still on disk — the token counts are read from it.)
 

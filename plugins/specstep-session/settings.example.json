@@ -1,12 +1,13 @@
 {
-  "_doc": "Manual (non-plugin) install only. If you install specstep-session as a Claude Code plugin, the SessionEnd hook is wired automatically by hooks/hooks.json and you do NOT need this file. For a manual install, copy the two skills into .claude/skills/ and the reporter into .claude/hooks/, then merge this hooks block into your .claude/settings.json. The reporter also needs SPECSTEP_API_KEY (session_state.write scope) in the environment to record usage; absent it, it no-ops.",
+  "_doc": "Manual (non-plugin) install only. If you install specstep-session as a Claude Code plugin, the SessionEnd hook is wired automatically by hooks/hooks.json and you do NOT need this file. For a manual install, copy the two skills into .claude/skills/ and BOTH hook files (run-reporter.js + session-end-usage-reporter.py) into .claude/hooks/, then merge this hooks block into your .claude/settings.json. run-reporter.js is a tiny Node launcher that resolves the Python interpreter cross-platform (py/python on Windows, python3 on macOS/Linux); the .py does the work. The reporter also needs SPECSTEP_API_KEY (session_state.write scope) in the environment to record usage; absent it, it no-ops.",
   "hooks": {
     "SessionEnd": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/hooks/session-end-usage-reporter.py"
+            "command": "node",
+            "args": [".claude/hooks/run-reporter.js"]
           }
         ]
       }
